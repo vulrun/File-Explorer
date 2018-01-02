@@ -15,6 +15,7 @@ date_default_timezone_set('Asia/Kolkata');
 
 // ini_set('display_errors', true);
 // error_reporting(E_ALL);
+error_reporting(0);
 
 define('VERSION', '1.0');
 define('_CONFIG', __DIR__.'/.config');
