@@ -16,7 +16,7 @@ date_default_timezone_set('Asia/Kolkata');
 // ini_set('display_errors', true);
 // error_reporting(E_ALL);
 
-define('VERSION', '1.1');
+define('VERSION', '1.0');
 define('_CONFIG', __DIR__.'/.config');
 define('_URL', $_SERVER['REQUEST_SCHEME'].'://'.$_SERVER['HTTP_HOST']);
 
@@ -555,7 +555,7 @@ Light - #5AE
 		<div class="col m6 s12 right-align">
 			<a target="_blank" href="https://github.com/webcdn/File-Explorer/issues" class="blue-grey-text text-lighten-4">Report Bugs</a>
 			<span> &nbsp; &bull; &nbsp;</span>
-			<a target="_blank" href="" class="blue-grey-text text-lighten-4">Feedback</a>
+			<a target="_blank" href="https://github.com/webcdn/File-Explorer/issues/1" class="blue-grey-text text-lighten-4">Suggestions / Feedback</a>
 			<span> &nbsp; &bull; &nbsp;</span>
 			<a target="_blank" href="https://paypal.me/moohit23" class="blue-grey-text text-lighten-4">Donate</a>
 		</div>
