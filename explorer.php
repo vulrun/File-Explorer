@@ -16,7 +16,7 @@ date_default_timezone_set('Asia/Kolkata');
 ini_set('display_errors', true);
 error_reporting(0);
 
-define('VERSION', '1.1');
+define('VERSION', '1.2');
 define('_CONFIG', __DIR__.'/.config');
 define('_URL', $_SERVER['REQUEST_SCHEME'].'://'.$_SERVER['HTTP_HOST']);
 $errors = error_get_last();
@@ -52,35 +52,32 @@ if( !$_SESSION['__allowed'] && strlen($config->password) ) {
 		echo "<!DOCTYPE html>\n";
 		echo "<html lang='en'>\n";
 		echo "\t<head>\n";
+		echo "\t\t<meta charset='utf-8'>\n";
+		echo "\t\t<link rel='canonical' href='"._URL.$_SERVER['PHP_SELF']."'>\n";
 		echo "\t\t<title>File Explorer v".VERSION."</title>\n";
-		echo "\t\t<meta http-equiv='content-type' content='text/html; charset=utf-8'>\n";
-		echo "\t\t<meta name='viewport' content='width=device-width, initial-scale=1'>\n";
+		echo "\t\t<meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0'>\n";
 		echo "\t\t<link rel='icon' type='image/png' href='".$config->assets."/1f4c2.png'>\n";
 		echo "\t\t<link rel='stylesheet' href='".$config->assets."/materialize.min.css'>\n";
-		echo "\t\t<style>*{outline: none !important; user-select: none; font-family: Roboto, sans-serif;}.middle {position: absolute; left: 50% !important; top: 50%; transform: translate(-50%, -50%);}</style>\n";
+		echo "\t\t<style>*{outline: none !important; user-select: none; font-family: Roboto, sans-serif;}.middle {width: 90%; min-width: 260px; max-width: 360px; position: absolute; left: 50% !important; top: 50%; transform: translate(-50%, -50%);}</style>\n";
 		echo "\t</head>\n";
 		echo "\t<body class='basecolor darken-1' onload='auth_login.auth.focus();'>\n";
-		echo "\t\t<div class='container'>\n";
-		echo "\t\t\t<div class='row'>\n";
-		echo "\t\t\t\t<div class='col l4 m6 s12 middle'>\n";
-		echo "\t\t\t\t\t<div class='card white z-depth-4'>\n";
-		echo "\t\t\t\t\t\t<div class='card-content'>\n";
-		echo "\t\t\t\t\t\t\t<div class='grey-text center card-title'><i class='material-icons medium'>lock</i></div>\n";
-		echo "\t\t\t\t\t\t\t<div class='grey-text center card-title'>Protected</div>\n";
-		echo "\t\t\t\t\t\t\t<form method='POST' id='auth_login'>\n";
-		echo "\t\t\t\t\t\t\t\t<div class='input-field'>\n";
-		echo "\t\t\t\t\t\t\t\t\t<i class='material-icons prefix'>lock</i>";
-		echo "\t\t\t\t\t\t\t\t\t<input type='password' name='auth' placeholder='Enter your Password' autocomplete='off' spellcheck='false'/>\n";
-		echo "\t\t\t\t\t\t\t\t</div>\n";
-		echo "\t\t\t\t\t\t\t</form>\n";
+		echo "\t\t<div class='middle'>\n";
+		echo "\t\t\t<div class='card white z-depth-4'>\n";
+		echo "\t\t\t\t<div class='card-content'>\n";
+		echo "\t\t\t\t\t<div class='grey-text center card-title'><i class='material-icons medium'>lock</i></div>\n";
+		echo "\t\t\t\t\t<div class='grey-text center card-title'>Protected</div>\n";
+		echo "\t\t\t\t\t<form method='POST' id='auth_login'>\n";
+		echo "\t\t\t\t\t\t<div class='input-field'>\n";
+		echo "\t\t\t\t\t\t\t<i class='material-icons prefix'>lock</i>";
+		echo "\t\t\t\t\t\t\t<input type='password' name='auth' placeholder='Enter your Password' autocomplete='off' spellcheck='false'/>\n";
 		echo "\t\t\t\t\t\t</div>\n";
-		echo "\t\t\t\t\t<div class='card-action center'>\n";
-		echo "\t\t\t\t\t\t<button class='waves-effect waves-light btn width-block' type='submit' form='auth_login'>LOGIN</button>\n";
-		echo "\t\t\t\t\t</div>\n";
+		echo "\t\t\t\t\t</form>\n";
+		echo "\t\t\t\t</div>\n";
+		echo "\t\t\t\t<div class='card-action center'>\n";
+		echo "\t\t\t\t\t<button class='waves-effect waves-light btn width-block' type='submit' form='auth_login'>LOGIN</button>\n";
 		echo "\t\t\t\t</div>\n";
 		echo "\t\t\t</div>\n";
 		echo "\t\t</div>\n";
-		echo "\t</div>\n";
 		echo "\t</body>\n";
 		echo "</html>\n";
 		exit;
@@ -1219,6 +1216,24 @@ if( is_array($errors) ){
 			});
 
 
+			/* LOGOUT SESSION AND COOKIE
+			*******************************************/
+			$(document).on('click', '.logout', function() {
+				Materialize.toast('Please Wait...', 'stay', 'wait');
+
+				$.post('', {do: 'logout', xsrf: XSRF}, function(data){
+					$('#configModal').modal('close');
+					toastDestroy();
+					Materialize.toast(data.response, 'stay', data.flag == true ? 'green darken-3' : 'red darken-2');
+
+					window.setTimeout(function(){
+						window.location.reload();
+					}, 1000);
+				}, 'json');
+			});
+
+
+
 			/* UPDATE CODE VERSION
 			*******************************************/
 			$(document).on('click', '.upgrade', function() {
@@ -1237,23 +1252,6 @@ if( is_array($errors) ){
 					else {
 						Materialize.toast(data.response, 5000);
 					}
-				}, 'json');
-			});
-
-
-			/* LOGOUT SESSION AND COOKIE
-			*******************************************/
-			$(document).on('click', '.logout', function() {
-				Materialize.toast('Please Wait...', 'stay', 'wait');
-
-				$.post('', {do: 'logout', xsrf: XSRF}, function(data){
-					$('#configModal').modal('close');
-					toastDestroy();
-					Materialize.toast(data.response, 'stay', data.flag == true ? 'green darken-3' : 'red darken-2');
-
-					window.setTimeout(function(){
-						window.location.reload();
-					}, 1000);
 				}, 'json');
 			});
 
