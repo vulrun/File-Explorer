@@ -13,13 +13,13 @@ session_start();
 setlocale(LC_ALL, 'en_US.UTF-8');
 date_default_timezone_set('Asia/Kolkata');
 
-// ini_set('display_errors', true);
-// error_reporting(E_ALL);
+ini_set('display_errors', true);
 error_reporting(0);
 
-define('VERSION', '1.0');
+define('VERSION', '1.1');
 define('_CONFIG', __DIR__.'/.config');
 define('_URL', $_SERVER['REQUEST_SCHEME'].'://'.$_SERVER['HTTP_HOST']);
+$errors = error_get_last();
 
 
 if( file_exists(_CONFIG) ){
@@ -39,11 +39,6 @@ if( strlen($config->password) ){
 		header('Refresh: 0');
 		exit;
 	}
-}
-
-if($_GET['do'] == 'ping') {
-	echo $_SESSION['__allowed'] ? output(true, 'Ping Successful') : output(false, 'Session Expired!');
-	exit;
 }
 
 if( !$_SESSION['__allowed'] && strlen($config->password) ) {
@@ -97,19 +92,19 @@ if( empty($_COOKIE['__xsrf']) ){
 	setcookie('__xsrf', sha1( uniqid() ) );
 }
 
-$real = @realpath($_REQUEST['path']);
 $path = !empty($_REQUEST['path']) ? $_REQUEST['path'] : '.';
+$real = @realpath($path);
 $deny_paths = array_unique( array_merge( lister(__FILE__), lister($assets) ) );
 
-// chdir($path);
-// echo $path;
-// echo getcwd();
+if( empty($_SESSION['gitJSON']) ){
+	$_SESSION['gitJSON'] = @json_decode(file_get_contents('https://raw.githubusercontent.com/webcdn/File-Explorer/mdui/repo.json'),1);
+}
 
 if($real === false) {
 	echo output(false, 'File or Directory Not Found');
 	exit;
 }
-if( substr($real, 0, strlen(__DIR__)) !== __DIR__ || (in_array($real, $deny_paths) && in_array($_REQUEST['do'], array('delete','rename','edit'))) ){
+if( substr($real, 0, strlen(__DIR__)) !== __DIR__ || ( isset($_REQUEST['do']) && in_array($real, $deny_paths) && in_array($_REQUEST['do'], array('delete','rename','edit'))) ){
 	echo output(false, 'Forbidden');
 	exit;
 }
@@ -120,206 +115,213 @@ if($_POST) {
 	}
 }
 
-
-if($_GET['do'] == 'list') {
-	clearstatcache();
-	if ( is_dir($path) ) {
-		$directory = $path;
-		$files = array_diff( scan_dir($directory), array('.', '..') );
-		foreach($files as $entry) if( substr($entry, 0, 1) !== '.' ) {
-			$i = "$directory/$entry";
-			$ext = strtolower(pathinfo($i, PATHINFO_EXTENSION));
-			$stat = stat($i);
-			$danger = in_array(realpath($i), $deny_paths);
-			if( is_readable($i) ) $perms[] = 'Read';
-			if( is_writable($i) ) $perms[] = 'Write';
-			if( is_executable($i) ) $perms[] = 'Execute';
-			$result[] = array(
-				'name' => basename($i),
-				'path' => preg_replace('@^\./@', '', $i),
-				'real_path' => realpath($i),
-				'type' => is_dir($i) ? 'Directory' : mime_content_type($i),
-				'ext' => is_dir($i) ? '---' : $ext,
-				'size' => $stat['size'],
-				'size_ok' => is_dir($i) ? '---' : formatFileSize($stat['size']),
-				'perms' => (int) decoct( fileperms($i) & 0777 ),
-				'perms_ok' => implode(' + ', $perms),
-				'atime' => $stat['atime'],
-				'atime_ok' => date('M d, Y - h:i A', $stat['atime']),
-				'ctime' => $stat['ctime'],
-				'ctime_ok' => date('M d, Y - h:i A', $stat['ctime']),
-				'mtime' => $stat['mtime'],
-				'mtime_ok' => date('M d, Y - h:i A', $stat['mtime']),
-				'mtime_easy' => easy_time( $stat['mtime'] ),
-				'is_dir' => is_dir($i),
-				'is_deleteable' => is_writable($directory) && !$danger && is_recursively_deleteable($i),
-				'is_editable' => !is_dir($i) && is_writable($i) && !$danger && in_array($ext, array('asp','aspx','c','cer','cfm','class','cpp','cs','csr','css','csv','dtd','fla','h','htm','html','java','js','jsp','json','log','lua','m','md','mht','pl','php','phps','phpx','py','sh','sln','sql','svg','swift','txt','vb','vcxproj','whtml','xcodeproj','xhtml','xml')),
-				'is_executable' => is_executable($i),
-				'is_readable' => is_readable($i),
-				'is_writable' => is_writable($i) && !$danger,
-				'is_zipable' => is_dir($i) && class_exists('ZipArchive'),
-				'is_zip' => ($ext == 'zip') && class_exists('ZipArchive') ? true : false,
-			);
-			unset($perms);
-		}
-		header('Content-Type: application/json');
-		echo json_encode(array('flag' => true, 'is_writable' => is_writable($path), 'response' => $result), JSON_PRETTY_PRINT);
-		exit;
-	}
-	else {
-		// echo output(false, 'Not a Directory');
-		echo output(false, getcwd());
-		exit;
-	}
-}
-elseif ($_GET['do'] == 'download' && !is_dir($real)) {
-	$filename = basename($path);
-	header('Content-Type: ' . mime_content_type($path));
-	header('Content-Length: '. filesize($path));
-	header(sprintf('Content-Disposition: attachment; filename=%s', strpos('MSIE', $_SERVER['HTTP_REFERER']) ? rawurlencode($filename) : $filename ));
-	ob_flush();
-	readfile($path);
-	exit;
-}
-elseif ($_POST['do'] == 'raw' && !is_dir($real)) {
-	header('Content-Type: text/plain');
-	echo file_get_contents($real);
-	exit;
-}
-elseif ($_POST['do'] == 'edit' && !is_dir($real)) {
-	$content = $_POST['content'];
-	$editStatus = (bool) file_put_contents($path, $content);
-	echo ($editStatus) ? output(true, 'File Saved Successfully') : output(false, 'Unable to edit file');
-	exit;
-}
-elseif ($_POST['do'] == 'mkdir') {
-	chdir($path);
-	$dir = str_replace('/', '', $_POST['dirname']);
-
-	if(substr($dir, 0, 2) === '..') {
-		echo output(false, 'Invalid Attempt');
-	}
-	else if (is_dir($dir)) {
-		echo output(true, 'Directory Already Exist');
-	}
-	else {
-		echo mkdir($dir, 0755) ? output(true, 'Directory Created') : output(false, 'Unable to create Directory');
-	}
-	exit;
-}
-elseif ($_POST['do'] == 'nwfile') {
-	chdir($path);
-	$fl = str_replace('/', '', $_POST['filename']);
-
-	if(substr($fl, 0, 2) === '..') {
-		echo output(false, 'Invalid Attempt');
-	}
-	else if (file_exists($fl)) {
-		echo output(true, 'File Already Exist');
-	}
-	else {
-		echo touch($fl) ? output(true, 'File Created') : output(false, 'Unable to create file');
-	}
-	exit;
-}
-elseif ($_POST['do'] == 'rename') {
-	$new = str_replace('/', '', $_POST['newname']);
-
-	if(substr($new, 0, 2) == '..') {
-		echo output(false, 'Invalid Attempt');
-	}
-	else {
-		echo rename($real, dirname($real).'/'.$new) ? output(true, 'Renamed Successfully') : output(false, 'Wrong Params');
-	}
-	exit;
-}
-elseif ($_POST['do'] == 'delete') {
-	$tmp = is_dir($real) ? 'Directory' : 'File';
-	echo rm_rf($real) ? output(true, $tmp . ' `' . basename($path) . '` Deleted Successfully') : output(false, 'Unable to delete');
-	exit;
-}
-elseif ($_POST['do'] == 'permit') {
-	$tmp = is_dir($real) ? 'Directory' : 'File';
-	echo chmod_rf($real) ? output(true, $tmp . ' `' . basename($path) . '` Permission Reset') : output(false, 'Error to permit');
-	exit;
-}
-elseif ($_POST['do'] == 'compress') {
-	if (is_dir($real)){
-		$zip = new ZipArchive();
-		if ($zip->open($path.'.zip', ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE){
-			$RDI = new RecursiveDirectoryIterator(pathinfo($path)['filename'], RecursiveDirectoryIterator::SKIP_DOTS);
-			$RII = new RecursiveIteratorIterator($RDI, RecursiveIteratorIterator::LEAVES_ONLY);
-			foreach ($RII as $loc) if (!$loc->isDir()) {
-				$filePath = $loc->getRealPath();
-				$zip->addFile($filePath, $loc);
+if( !empty($_REQUEST['do']) ){
+	if($_GET['do'] == 'list') {
+		clearstatcache();
+		if ( is_dir($path) ) {
+			$directory = $path;
+			$files = array_diff( scan_dir($directory), array('.', '..') );
+			// print_r($files);
+			foreach($files as $e => $entry) if( substr($entry, 0, 1) !== '.' ) {
+				$i = "$directory/$entry";
+				$ext = strtolower(pathinfo($i, PATHINFO_EXTENSION));
+				$stat = stat($i);
+				$danger = in_array(realpath($i), $deny_paths);
+				if( is_readable($i) ) $perms[] = 'Read';
+				if( is_writable($i) ) $perms[] = 'Write';
+				if( is_executable($i) ) $perms[] = 'Execute';
+				$result[] = array(
+					'name' => basename($i),
+					'sort' => $e,
+					'path' => preg_replace('@^\./@', '', $i),
+					'real_path' => realpath($i),
+					'type' => is_dir($i) ? 'Directory' : (function_exists('mime_content_type') ? mime_content_type($i) : $ext),
+					'ext' => is_dir($i) ? '---' : $ext,
+					'size' => is_dir($i) ? 0 : $stat['size'],
+					'size_ok' => is_dir($i) ? '---' : formatFileSize($stat['size']),
+					'perms' => (int) decoct( fileperms($i) & 0777 ),
+					'perms_ok' => implode(' + ', $perms),
+					'atime' => $stat['atime'],
+					'atime_ok' => date('M d, Y - h:i A', $stat['atime']),
+					'ctime' => $stat['ctime'],
+					'ctime_ok' => date('M d, Y - h:i A', $stat['ctime']),
+					'mtime' => $stat['mtime'],
+					'mtime_ok' => date('M d, Y - h:i A', $stat['mtime']),
+					'mtime_easy' => easy_time( $stat['mtime'] ),
+					'is_dir' => is_dir($i),
+					'is_deleteable' => is_writable($directory) && !$danger && is_recursively_deleteable($i),
+					'is_editable' => !is_dir($i) && is_writable($i) && !$danger && in_array($ext, array('asp','aspx','c','cer','cfm','class','cpp','cs','csr','css','csv','dtd','fla','h','htm','html','java','js','jsp','json','log','lua','m','md','mht','pl','php','phps','phpx','py','sh','sln','sql','svg','swift','txt','vb','vcxproj','whtml','xcodeproj','xhtml','xml')),
+					'is_executable' => is_executable($i),
+					'is_readable' => is_readable($i),
+					'is_writable' => is_writable($i) && !$danger,
+					'is_zipable' => is_dir($i) && class_exists('ZipArchive'),
+					'is_zip' => ($ext == 'zip') && class_exists('ZipArchive') ? true : false,
+				);
+				unset($perms);
 			}
-			$zip->close();
-			echo output(true, '`'.basename($path).'.zip` created successfully');
+			header('Content-Type: application/json');
+			echo json_encode(array('flag' => true, 'is_writable' => is_writable($path), 'response' => $result), JSON_PRETTY_PRINT);
+			exit;
 		}
 		else {
-			echo output(false, 'Oops! Unable to compress');
+			echo output(false, 'Not a Directory');
+			exit;
 		}
 	}
-	else {
-		echo output(false, 'Oops! Directory is corrupted');
+	elseif ($_GET['do'] == 'download' && !is_dir($real)) {
+		$filename = basename($path);
+		header('Content-Type: ' . mime_content_type($path));
+		header('Content-Length: '. filesize($path));
+		header(sprintf('Content-Disposition: attachment; filename=%s', strpos('MSIE', $_SERVER['HTTP_REFERER']) ? rawurlencode($filename) : $filename ));
+		ob_flush();
+		readfile($path);
+		exit;
 	}
-	exit;
-}
-elseif ($_POST['do'] == 'extract') {
-	$ext = pathinfo($path, PATHINFO_EXTENSION);
-	$pathTo = pathinfo($real, PATHINFO_DIRNAME);
-	if (strtolower($ext) == 'zip'){
-		$zip = new ZipArchive;
-		if ($zip->open($path) === TRUE) {
-			$zip->extractTo($pathTo);
-			$zip->close();
-			echo output(true, 'Archive Extracted Successfully');
+	elseif ($_POST['do'] == 'raw' && !is_dir($real)) {
+		header('Content-Type: text/plain');
+		echo file_get_contents($real);
+		exit;
+	}
+	elseif ($_POST['do'] == 'edit' && !is_dir($real)) {
+		$content = $_POST['content'];
+		$editStatus = (bool) file_put_contents($path, $content);
+		echo ($editStatus) ? output(true, 'File Saved Successfully') : output(false, 'Unable to edit file');
+		exit;
+	}
+	elseif ($_POST['do'] == 'mkdir') {
+		chdir($path);
+		$dir = str_replace('/', '', $_POST['dirname']);
+
+		if(substr($dir, 0, 2) === '..') {
+			echo output(false, 'Invalid Attempt');
+		}
+		else if (is_dir($dir)) {
+			echo output(true, 'Directory Already Exist');
 		}
 		else {
-			echo output(false, 'Oops! Archive is corrupted');
+			echo mkdir($dir, 0755) ? output(true, 'Directory Created') : output(false, 'Unable to create Directory');
 		}
+		exit;
 	}
-	else {
-		echo output(false, 'Oops!, Error while extracting `.'.$ext.'` file');
+	elseif ($_POST['do'] == 'nwfile') {
+		chdir($path);
+		$fl = str_replace('/', '', $_POST['filename']);
+
+		if(substr($fl, 0, 2) === '..') {
+			echo output(false, 'Invalid Attempt');
+		}
+		else if (file_exists($fl)) {
+			echo output(true, 'File Already Exist');
+		}
+		else {
+			echo touch($fl) ? output(true, 'File Created') : output(false, 'Unable to create file');
+		}
+		exit;
 	}
-	exit;
-}
-elseif ($_POST['do'] == 'upload') {
-	chdir($path);
-	move_uploaded_file($_FILES['file_data']['tmp_name'], $_FILES['file_data']['name']);
-	exit;
-}
-elseif ($_POST['do'] == 'config') {
-	$config->list_view = !empty( $_POST['list_view'] ) ? true : false;
-	$config->password = !empty( $_POST['pass'] ) ? md5(sha1($_POST['pass'])) : '';
-	$config->assets = rtrim($_POST['assets'], '/');
-	file_put_contents(_CONFIG, json_encode($config, JSON_PRETTY_PRINT));
-	echo output(true, 'Settings Updated Successfully');
-	exit;
-}
-elseif ($_POST['do'] == 'upgrade') {
-	$ver = @json_decode( file_get_contents('https://raw.githubusercontent.com/webcdn/File-Explorer/mdui/repo.json') );
-	if($ver->version != VERSION) {
-		$updateStatus = (bool) file_put_contents(basename(__FILE__), file_get_contents('https://raw.githubusercontent.com/webcdn/File-Explorer/mdui/explorer.php') );
-		echo ($updateStatus) ? output(true, 'Updated to Newer Version') : output(false, 'Failed to Update');
+	elseif ($_POST['do'] == 'rename') {
+		$new = str_replace('/', '', $_POST['newname']);
+
+		if(substr($new, 0, 2) == '..') {
+			echo output(false, 'Invalid Attempt');
+		}
+		else {
+			echo rename($real, dirname($real).'/'.$new) ? output(true, 'Renamed Successfully') : output(false, 'Wrong Params');
+		}
+		exit;
 	}
-	else {
-		echo output(false, 'No Updates Available');
+	elseif ($_POST['do'] == 'delete') {
+		$tmp = is_dir($real) ? 'Directory' : 'File';
+		echo rm_rf($real) ? output(true, $tmp . ' `' . basename($path) . '` Deleted Successfully') : output(false, 'Unable to delete');
+		exit;
 	}
-	exit;
+	elseif ($_POST['do'] == 'permit') {
+		$tmp = is_dir($real) ? 'Directory' : 'File';
+		echo chmod_rf($real) ? output(true, $tmp . ' `' . basename($path) . '` Permission Reset') : output(false, 'Error to permit');
+		exit;
+	}
+	elseif ($_POST['do'] == 'compress') {
+		if (is_dir($real)){
+			$zip = new ZipArchive();
+			if ($zip->open($path.'.zip', ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE){
+				$RDI = new RecursiveDirectoryIterator(pathinfo($path)['filename'], RecursiveDirectoryIterator::SKIP_DOTS);
+				$RII = new RecursiveIteratorIterator($RDI, RecursiveIteratorIterator::LEAVES_ONLY);
+				foreach ($RII as $loc) if (!$loc->isDir()) {
+					$filePath = $loc->getRealPath();
+					$zip->addFile($filePath, $loc);
+				}
+				$zip->close();
+				echo output(true, '`'.basename($path).'.zip` created successfully');
+			}
+			else {
+				echo output(false, 'Oops! Unable to compress');
+			}
+		}
+		else {
+			echo output(false, 'Oops! Directory is corrupted');
+		}
+		exit;
+	}
+	elseif ($_POST['do'] == 'extract') {
+		$ext = pathinfo($path, PATHINFO_EXTENSION);
+		$pathTo = pathinfo($real, PATHINFO_DIRNAME);
+		if (strtolower($ext) == 'zip'){
+			$zip = new ZipArchive;
+			if ($zip->open($path) === TRUE) {
+				$zip->extractTo($pathTo);
+				$zip->close();
+				echo output(true, 'Archive Extracted Successfully');
+			}
+			else {
+				echo output(false, 'Oops! Archive is corrupted');
+			}
+		}
+		else {
+			echo output(false, 'Oops!, Error while extracting `.'.$ext.'` file');
+		}
+		exit;
+	}
+	elseif ($_POST['do'] == 'upload') {
+		chdir($path);
+		move_uploaded_file($_FILES['file_data']['tmp_name'], $_FILES['file_data']['name']);
+		exit;
+	}
+	elseif ($_POST['do'] == 'config') {
+		logout();
+		$config->list_view = !empty( $_POST['list_view'] ) ? true : false;
+		$config->password = !empty( $_POST['pass'] ) ? md5(sha1($_POST['pass'])) : '';
+		$config->assets = rtrim($_POST['assets'], '/');
+		file_put_contents(_CONFIG, json_encode($config, JSON_PRETTY_PRINT));
+		echo output(true, 'Settings Updated Successfully');
+		exit;
+	}
+	elseif ($_REQUEST['do'] == 'logout') {
+		echo logout() ? output(true, 'Logged Out Successfully') : output(false, 'Refreshing...');
+		exit;
+	}
+	elseif ($_POST['do'] == 'upgrade') {
+		if( $_SESSION['gitJSON']['version'] != VERSION) {
+			$updateStatus = (bool) file_put_contents(basename(__FILE__), file_get_contents('https://raw.githubusercontent.com/webcdn/File-Explorer/mdui/explorer.php') );
+			logout();
+			echo ($updateStatus) ? output(true, 'Updated to Newer Version') : output(false, 'Failed to Update');
+		}
+		else {
+			echo output(false, 'No Updates Available');
+		}
+		exit;
+	}
 }
-elseif ($_REQUEST['do'] == 'logout') {
+
+
+
+
+
+function logout(){
+	unset($_SESSION['gitVer']);
+	unset($_SESSION['gitJSON']);
 	unset($_SESSION['__allowed']);
-	echo output(true, 'Logged Out Successfully');
-	exit;
+	setcookie('__xsrf', '', time() - 3600);
+	return true;
 }
-
-
-
-
-
-
-
 
 
 function easy_time($time) {
@@ -340,7 +342,6 @@ function scan_dir($path, $sort = 0) {
 	}
 	return array_merge($dir_list, $file_list);
 }
-
 
 function rm_rf($loc, &$output = true) {
 	if( is_dir($loc) ) {
@@ -421,113 +422,120 @@ function formatFileSize($bytes, $round = 2) {
 		return 'Too Large';
 	}
 }
+
+if( is_array($errors) ){
+	error_log(json_encode(error_get_last(), JSON_PRETTY_PRINT), 1, 'info@grab.gq', 'From: file-explorer_v'.VERSION.'@webcdn.github.io');
+}
 ?>
 <!--
 ===============================================
-|| File Explorer
-|| Version: <?= VERSION; ?> 
-|| 
-|| https://github.com/webcdn/File-Explorer
-|| License: GNU
+! File Explorer
+! Version: <?= VERSION; ?> 
+! 
+! https://github.com/webcdn/File-Explorer
+! License: GNU
 ===============================================
-https://twemoji.maxcdn.com/svg/1f4c2.svg
- DARK - #059 / #035 / #245
-COLOR - #269
-Light - #5AE
 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
+	<meta charset="utf-8">
+	<link rel="canonical" href="<?= _URL.$_SERVER['PHP_SELF']; ?>">
 	<title>File Explorer v<?php echo VERSION; ?></title>
-	<meta http-equiv="content-type" content="text/html; charset=UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
 	<link rel="icon" type="image/png" href="<?php echo $config->assets; ?>/1f4c2.png">
 	<link rel="stylesheet" href="<?php echo $config->assets; ?>/materialize.min.css">
 	<style>
-	* {outline:	none !important; font-family: 'Roboto', sans-serif;}
-	html {min-width: 320px;}
-	body {overflow-y: scroll !important;}
+		* {outline: none !important; font-family: 'Roboto', sans-serif;}
+		html {min-width: 280px;}
+		body {overflow-y: scroll !important;}
 
-	.txtLite {color: #777; font-size: 90%;}
+		.modal.modal-footer .modal-content {padding-bottom: 12px;}
 
-	header .breadcrumb.truncate {display: inline-block; max-width: 8rem;}
-	header nav ul {background: inherit;}
+		header .breadcrumb.truncate {display: inline-block; max-width: 8rem;}
+		header nav ul {background: inherit;}
 
-	main > div {position: relative; margin: 0rem auto; min-height: 70vh;}
-	main > div:before {transition: 0.4s; content: ''; position: absolute; top: 0; left: 0; z-index: 2; width: 100%; height: 100%;  background-image: url(<?php echo $config->assets; ?>/loader.svg); background-color: #EEE; background-position: center 5rem; background-size: 10rem; background-repeat: no-repeat; opacity: 0; transform: scale(0);}
-	main > div.loading:before {opacity: 1; transform: scale(1);}
+		main > div {position: relative; margin: 0rem auto; min-height: 70vh;}
+		main > div:before {transition: 0.4s; content: ''; position: absolute; top: 0; left: 0; z-index: 2; width: 100%; height: 100%;  background-image: url(<?php echo $config->assets; ?>/loader.svg); background-color: #EEE; background-position: center 5rem; background-size: 10rem; background-repeat: no-repeat; opacity: 0; transform: scale(0);}
+		main > div.loading:before {opacity: 1; transform: scale(1);}
 
-	main {margin-bottom: 2.5rem;}
-	main .card {background: #FFF; box-shadow: none; margin: 0.5rem 0;}
-	main .card:hover {box-shadow: inset 0 4em 2px rgba(50, 150, 250, 0.4);}
-	main .card .card-content {padding: 1rem 4rem 1rem 1rem !important; color: #444;}
-	main .card.is_file .card-content {line-height: 1rem;}
-	main .card.is_file .card-content:before {content: attr(data-size); position: absolute; left: 3.4rem; bottom: 0.35rem; color: #BBB; font-size: 80%;}
-	main .card .card-content i.left {margin-right: 10px;}
-	main .card .more {cursor: pointer; position: absolute; right: 0; top: 0; width: 3.5rem; line-height: 3.5rem; border-radius: 2px; text-align: center; border-left: 1px solid #EEE;}
-	main .card .more i.material-icons {line-height: inherit;}
-	main .collection {position: absolute; min-width: 150px; z-index: 999; top: 3rem; right: 0; transition: scale(1);}
-	main .collection .collection-item {padding: 10px; cursor: pointer;}
-
-
-	main.list .collection {top: 2.25rem;}
-	main.list .card {margin: 0 !important; margin-bottom: 0.5rem !important;}
-	main.list .heading,
-	main.list .card .card-content {padding: 0.5rem 3rem 0.5rem 0.25rem !important; line-height: 1.75rem;}
-	main.list .card .card-content:before {display: none;}
-	main.list .card .more {width: 2.7rem; line-height: 2.7rem;}
+		main {margin-bottom: 2rem;}
+		main .card {background: #FFF; box-shadow: none; margin: 0.5rem 0;}
+		main .card:hover {box-shadow: inset 0 4em 2px rgba(50, 150, 250, 0.3);}
+		main .card .card-content {padding: 1rem 4rem 1rem 1rem !important; color: #444;}
+		main .card.is_file .card-content {line-height: 1rem;}
+		main .card.is_file .card-content:before {content: attr(data-size); position: absolute; left: 3.4rem; bottom: 0.35rem; color: #BBB; font-size: 80%;}
+		main .card .card-content i.left {margin-right: 10px;}
+		main .card .more {cursor: pointer; position: absolute; right: 0; top: 0; width: 3.5rem; line-height: 3.5rem; border-radius: 2px; text-align: center; border-left: 1px solid #EEE;}
+		main .card .more i.material-icons {line-height: inherit;}
+		main .collection {position: absolute; min-width: 150px; z-index: 999; top: 3rem; right: 0; transition: scale(1);}
+		main .collection .collection-item {padding: 10px; cursor: pointer;}
 
 
-	footer {position: fixed; bottom: 0; z-index: 1; width: 100%; height: 1.75rem; line-height: 1.75rem; padding: 0 1rem; color: #EEE; background: #245; box-shadow: inset 0 2px 1rem rgba(0,0,0,0.5); font-size: 0.7rem;}
+		main.list .tHead .tH {color: #777; font-size: 90%; cursor: pointer; position: relative;}
+		main.list .tHead .tH.sort_asc:after {content: "\e316"; font-family: 'Material Icons'; color: #AAA; font-size: 1.75rem; line-height: 1; position: absolute;}
+		main.list .tHead .tH.sort_desc:after {content: "\e313"; font-family: 'Material Icons'; color: #AAA; font-size: 1.75rem; line-height: 1; position: absolute;}
+		main.list .tBody .tD:not(.s8) {color: #777; font-size: 90%;}
+
+		main.list .collection {top: 2.25rem;}
+		main.list .card {margin: 0 !important; margin-bottom: 0.5rem !important;}
+		main.list .tHead,
+		main.list .card .card-content {padding: 0.5rem 3rem 0.5rem 0.25rem !important; line-height: 1.75rem;}
+		main.list .card .card-content:before {display: none;}
+		main.list .card .more {width: 2.7rem; line-height: 2.7rem;}
 
 
-	.modal.bottom-sheet.full {max-height: 100%;}
-	.modal.bottom-sheet .modal-content {padding: 1rem !important;}
-	.modal.bottom-sheet .modal-footer {padding: 1rem !important; height: 68px;}
-	.modal textarea {height: 78vh !important; resize: none; padding: 0.5rem;}
-
-	#uploadModal {box-shadow: inset 0 0 5rem rgba(0, 0, 0, 0.2);}
-	#uploadModal .modal-content {color: #333; -webkit-transition: background 0.4s ease; transition: background 0.4s ease;}
-	#uploadModal .modal-content.hover {color: #EEE; background: #555;}
-	#uploadModal .modal-content #drop_area {padding: 20vh 0; border: 5px dashed #DEDEDE !important;}
-
-	#progressModal .progress {height: 0.5rem;}
-	#progressModal .pcent {height: 1rem; line-height: 1rem; font-size: 1rem;}
-	#progressModal .pcent .material-icons {height: inherit; line-height: inherit; font-size: inherit;}
-
-	#configModal .pwdeye {position: absolute; right: 0.2rem; bottom: 0.6rem;}
-
-	.toast.wait {cursor: wait; padding-left: 4rem;}
-	.toast.wait:before {
-		content: '';
-		position: absolute;
-		left: 1rem;
-		width: 2rem;
-		height: 2rem;
-		border: 2px solid;
-		border-radius: 50%;
-		-webkit-animation: pulsate 1s linear infinite;
-		animation: pulsate 1s linear infinite;
-	}
-	@keyframes pulsate {
-		0%		{ opacity: 0; transform: scale(0.1); -webkit-transform: scale(0.1);}
-		50%		{ opacity: 1; }
-		100%	{ opacity: 0; transform: scale(1.2); -webkit-transform: scale(1.2);}
-	}
+		footer {position: fixed; bottom: 0; z-index: 1; width: 100%; height: 1.75rem; line-height: 1.85rem; padding: 0 1rem; color: #EEE; background: #245; box-shadow: inset 0 2px 1rem rgba(0,0,0,0.5); font-size: 0.7rem;}
+		footer .upgrade {padding: 0.1rem 0.3rem; border-radius: 2px; cursor: pointer;}
 
 
+		.modal.bottom-sheet.full {max-height: 100%;}
+		.modal.bottom-sheet .modal-content {padding: 1rem !important;}
+		.modal.bottom-sheet .modal-footer {padding: 1rem !important; height: 68px;}
+		.modal textarea {height: 78vh !important; resize: none; padding: 0.5rem;}
 
-	@media (max-width : 600px) {
-		header .breadcrumb.truncate {max-width: 5rem;}
-		header .breadcrumb:before {margin: 0;}
+		#uploadModal {box-shadow: inset 0 0 5rem rgba(0, 0, 0, 0.2);}
+		#uploadModal .modal-content {color: #333; -webkit-transition: background 0.2s; transition: background 0.2s;}
+		#uploadModal .modal-content.hover {background: #CC9;}
+		#uploadModal .modal-content #drop_area {padding: 20vh 0; border: 5px dashed rgba(0,0,0,0.3) !important;}
 
-		.toast.wait:before {top: 25%;}
-		main {margin-bottom: 3.25rem;}
+		#progressModal .progress {height: 0.5rem;}
+		#progressModal .pcent {height: 1rem; line-height: 1rem; font-size: 1rem;}
+		#progressModal .pcent .material-icons {height: inherit; line-height: inherit; font-size: inherit;}
 
-		footer {height: 2.75rem; line-height: 1.3rem; padding: 0.2rem 1rem;}
-		footer .left-align, footer .right-align {float: none !important; text-align: center !important;}
-	}
-</style>
+		#configModal .pwdeye {position: absolute; right: 0.2rem; bottom: 0.6rem;}
+		#configModal .collapse_btn {display: block; cursor: pointer; padding: 2px 0; margin-top: 0.5rem;}
+		#configModal .collapse_btn.active {box-shadow: 0 -5px 5px -5px #AAA;}
+
+		.toast.wait {cursor: wait; padding-left: 4rem;}
+		.toast.wait:before {
+			content: '';
+			position: absolute;
+			left: 1rem;
+			width: 2rem;
+			height: 2rem;
+			border: 2px solid;
+			border-radius: 50%;
+			-webkit-animation: pulsate 1s linear infinite;
+			animation: pulsate 1s linear infinite;
+		}
+		@keyframes pulsate {
+			0%		{ opacity: 0; transform: scale(0.1); -webkit-transform: scale(0.1);}
+			50%		{ opacity: 1; }
+			100%	{ opacity: 0; transform: scale(1.2); -webkit-transform: scale(1.2);}
+		}
+
+		@media (max-width : 600px) {
+			header .breadcrumb.truncate {max-width: 5rem;}
+			header .breadcrumb:before {margin: 0;}
+
+			.toast.wait:before {top: 25%;}
+			main {margin-bottom: 3.25rem;}
+
+			footer {height: 2.75rem; line-height: 1.3rem; padding: 0.2rem;}
+			footer .left-align, footer .right-align {float: none !important; text-align: center !important;}
+		}
+	</style>
 </head>
 <body class="grey lighten-3">
 	<header>
@@ -549,18 +557,22 @@ Light - #5AE
 	</main>
 	<footer class="row no-vmargin">
 		<div class="col m6 s12 left-align">
-			Made with &nbsp;<i class="material-icons red-text tiny valign-middle">favorite</i>&nbsp; By &nbsp;<a target="_blank" href="https://github.com/webcdn" class="blue-grey-text text-lighten-4">WebCDN</a>
+			<span>Made with &nbsp;<i class="material-icons red-text tiny valign-middle">favorite</i>&nbsp; By &nbsp;<a target="_blank" href="https://github.com/webcdn" class="blue-grey-text text-lighten-4">WebCDN</a></span>
 			<span> &nbsp; &bull; &nbsp;</span>
-			<a target="_blank" href="https://github.com/webcdn/File-Explorer" class="blue-grey-text text-lighten-4">Version <?= VERSION; ?></a>
-		</div>
-		<div class="col m6 s12 right-align">
-			<a target="_blank" href="https://github.com/webcdn/File-Explorer/issues" class="blue-grey-text text-lighten-4">Report Bugs</a>
-			<span> &nbsp; &bull; &nbsp;</span>
-			<a target="_blank" href="https://github.com/webcdn/File-Explorer/issues/1" class="blue-grey-text text-lighten-4">Suggestions / Feedback</a>
-			<span> &nbsp; &bull; &nbsp;</span>
-			<a target="_blank" href="https://paypal.me/moohit23" class="blue-grey-text text-lighten-4">Donate</a>
-		</div>
-	</footer>
+			<?php if( $_SESSION['gitJSON']['version'] != VERSION ) : ?>
+				<a class="white blue-grey-text text-darken-2 upgrade">Upgrade<span class="hide-on-small-only"> to Version <?= $_SESSION['gitJSON']['version']; ?></span></a>
+				<?php else : ?>
+					<a target="_blank" href="https://github.com/webcdn/File-Explorer" class="blue-grey-text text-lighten-4">Version <?= VERSION; ?></a>
+				<?php endif; ?>
+			</div>
+			<div class="col m6 s12 right-align">
+				<a target="_blank" href="https://github.com/webcdn/File-Explorer/issues" class="blue-grey-text text-lighten-4">Report Bugs</a>
+				<span> &nbsp; &bull; &nbsp;</span>
+				<a target="_blank" href="https://github.com/webcdn/File-Explorer/issues/1" class="blue-grey-text text-lighten-4">Suggestions / Feedback</a>
+				<span> &nbsp; &bull; &nbsp;</span>
+				<a target="_blank" href="https://gg.gg/contribute" class="blue-grey-text text-lighten-4">Donate</a>
+			</div>
+		</footer>
 
 
 
@@ -568,170 +580,175 @@ Light - #5AE
 
 
 
-	<!-- MODALs -->
-	<div id="uploadModal" class="modal bottom-sheet full">
-		<div class="modal-content">
-			<h5 class="left">Upload Files</h5>
-			<a class="right waves-effect waves-light btn-flat modal-action modal-close hoverable"><i class="material-icons">close</i></a>
-			<div class="clearfix"></div>
-			<div class="center vmargin-1" id="drop_area">
-				<div class="drop_body">
-					<h4>Drop Files Here</h4>
-					<h5>or</h5>
-					<label class="waves-effect waves-light btn vmargin-1">Choose Files<input class="hide" type="file" multiple></label>
-					<h6>Maximum Upload File Size: &nbsp; <?php echo formatFileSize($MAX_UPLOAD_SIZE); ?>.</h6>
+		<!-- MODALs -->
+		<div id="uploadModal" class="modal bottom-sheet full">
+			<div class="modal-content">
+				<h5 class="left">Upload Files</h5>
+				<a class="right waves-effect waves-light btn-flat modal-action modal-close hoverable"><i class="material-icons">close</i></a>
+				<div class="clearfix"></div>
+				<div class="center vmargin-1" id="drop_area">
+					<div class="drop_body">
+						<h4>Drop Files Here</h4>
+						<h5>or</h5>
+						<label class="waves-effect waves-light btn vmargin-1">Choose Files<input class="hide" type="file" multiple></label>
+						<h6>Maximum Upload File Size: &nbsp; <?php echo formatFileSize($MAX_UPLOAD_SIZE); ?>.</h6>
+					</div>
 				</div>
 			</div>
 		</div>
-	</div>
 
-	<div id="progressModal" class="modal bottom-sheet full">
-		<div class="modal-content">
-			<h4 class="title">Uploading</h4>
-			<div class="body"></div>
+		<div id="progressModal" class="modal bottom-sheet full">
+			<div class="modal-content">
+				<h4 class="title">Uploading</h4>
+				<div class="body"></div>
+			</div>
+			<div class="modal-footer">
+				<a class="waves-effect waves-dark btn red abort">Abort</a>
+			</div>
 		</div>
-		<div class="modal-footer">
-			<a class="waves-effect waves-dark btn red abort">Abort</a>
-		</div>
-	</div>
 
-	<div id="detailModal" class="modal bottom-sheet full">
-		<div class="modal-content">
-			<h5 class="left">Details and Info</h5>
-			<a class="right waves-effect waves-light btn-flat modal-action modal-close hoverable"><i class="material-icons">close</i></a>
-			<div class="clearfix"></div>
-			<table>
-				<col width="30%" />
-				<col width="70%" />
-				<tbody>
-					<tr><th>Name</th>			<td class="name"></td></tr>
-					<tr><th>Path</th>			<td><code class="path"></code></td></tr>
-					<tr><th>Size</th>			<td class="size"></td></tr>
-					<tr><th>Type</th>			<td class="type"></td></tr>
-					<tr><th>Premission</th>		<td class="perm"></td></tr>
-					<tr><th>Created Time</th>	<td class="ctime"></td></tr>
-					<tr><th>Accessed Time</th>	<td class="atime"></td></tr>
-					<tr><th>Modified Time</th>	<td class="mtime"></td></tr>
-				</tbody>
-			</table>
+		<div id="detailModal" class="modal bottom-sheet full">
+			<div class="modal-content">
+				<h5 class="left">Details and Info</h5>
+				<a class="right waves-effect waves-light btn-flat modal-action modal-close hoverable"><i class="material-icons">close</i></a>
+				<div class="clearfix"></div>
+				<table>
+					<col width="30%" />
+					<col width="70%" />
+					<tbody>
+						<tr><th>Name</th>			<td class="name"></td></tr>
+						<tr><th>Path</th>			<td><code class="path"></code></td></tr>
+						<tr><th>Size</th>			<td class="size"></td></tr>
+						<tr><th>Type</th>			<td class="type"></td></tr>
+						<tr><th>Premission</th>		<td class="perm"></td></tr>
+						<tr><th>Created Time</th>	<td class="ctime"></td></tr>
+						<tr><th>Accessed Time</th>	<td class="atime"></td></tr>
+						<tr><th>Modified Time</th>	<td class="mtime"></td></tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="waves-effect waves-dark btn right black perm_it">Reset Premissions</button>
+				<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
+			</div>
 		</div>
-		<div class="modal-footer">
-			<button type="button" class="waves-effect waves-dark btn right black perm_it">Reset Premissions</button>
-			<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
-		</div>
-	</div>
 
-	<div id="newDirModal" class="modal bottomsheet">
-		<div class="modal-content">
-			<h5>Create New Folder</h5>
-			<form id="new_dir">
-				<div class="input-field">
-					<i class="material-icons prefix">create_new_folder</i>
-					<input class="dirname" type="text" placeholder="Enter Directory Name" />
-				</div>
-			</form>
-		</div>
-		<div class="modal-footer">
-			<button type="submit" class="waves-effect waves-light btn right modal-action" form="new_dir">Create</button>
-			<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
-		</div>
-	</div>
-
-	<div id="newFileModal" class="modal bottomsheet">
-		<div class="modal-content">
-			<h5>Create New File</h5>
-			<form id="new_file">
-				<div class="input-field">
-					<i class="material-icons prefix">note_add</i>
-					<input class="filename" type="text" placeholder="Enter File Name" />
-				</div>
-			</form>
-		</div>
-		<div class="modal-footer">
-			<button type="submit" class="waves-effect waves-light btn right modal-action" form="new_file">Create</button>
-			<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
-		</div>
-	</div>
-
-	<div id="renameModal" class="modal bottomsheet">
-		<div class="modal-content">
-			<h5>Rename</h5>
-			<form id="rename_it">
-				<div class="input-field">
-					<i class="material-icons prefix">text_format</i>
-					<input type="hidden" class="path" />
-					<input type="text" class="newname" placeholder="Enter New Name" />
-				</div>
-			</form>
-		</div>
-		<div class="modal-footer">
-			<button type="submit" class="waves-effect waves-light btn right modal-action" form="rename_it">Rename</button>
-			<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
-		</div>
-	</div>
-
-	<div id="editModal" class="modal bottom-sheet full">
-		<div class="modal-content">
-			<h6>File Name</h6>
-			<form id="save_it">
-				<input type="hidden" class="path" />
-				<textarea class="form-control file_content" rows="30"></textarea>
-			</form>
-		</div>
-		<div class="modal-footer">
-			<button type="submit" class="waves-effect waves-light btn right modal-action" form="save_it">Save</button>
-			<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
-		</div>
-	</div>
-
-	<div id="configModal" class="modal bottomsheet">
-		<div class="modal-content">
-			<h4 class="left">Settings</h4>
-			<a class="right waves-effect waves-light btn-flat modal-action modal-close hoverable"><i class="material-icons">close</i></a>
-			<div class="clearfix"></div>
-			<form class="row" id="config_it">
-				<input type="hidden" name="do" value="config">
-				<input type="hidden" name="xsrf" value="<?= $_COOKIE['__xsrf']; ?>">
-				<div class="input-field">
-					<h6 class="left">View</h6>
-					<div class="switch right">
-						<label class="valign-wrapper">
-							<span class="valign-wrapper"><i class="material-icons">view_module</i> Grid</span>
-							<input type="checkbox" name="list_view" class="list_view" value="<?= !empty($config->list_view) ? '1' : '0'; ?>" <?= !empty($config->list_view) ? 'checked' : ''; ?>><span class="lever"></span>
-							<span class="valign-wrapper"><i class="material-icons">view_list</i> List</span>
-						</label>
+		<div id="newDirModal" class="modal bottomsheet">
+			<div class="modal-content">
+				<h5>Create New Folder</h5>
+				<form id="new_dir">
+					<div class="input-field">
+						<i class="material-icons prefix">create_new_folder</i>
+						<input id="dirname" class="dirname" type="text" placeholder="Enter Directory Name" />
+						<label for="dirname">Enter Folder Name</label>
 					</div>
-				</div>
-				<div class="input-field">
-					<h6>Password</h6>
-					<i class="material-icons prefix">lock</i>
-					<input type="password" name="pass" class="pwd" placeholder="Enter Password" value="<?= $_SESSION['ok_pass']; ?>"/>
-					<a class="waves-effect waves-dark btn-flat pwdeye" title="Show"><i class="material-icons">visibility</i></a>
-				</div>
-				<div class="input-field">
-					<h6>ASSETS DIR</h6>
-					<i class="material-icons prefix">link</i>
-					<input type="text" name="assets" value="<?= $config->assets; //$config->assets; ?>">
-				</div>
-			</form>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="submit" class="waves-effect waves-light btn right modal-action" form="new_dir">Create</button>
+				<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
+			</div>
 		</div>
-		<div class="modal-footer">
-			<button type="submit" class="waves-effect waves-light btn right modal-action" form="config_it">
-				<i class="material-icons hide-on-med-and-up">save</i>
-				<span class="hide-on-small-only">Save</span>
-			</button>
-			<button type="update" class="waves-effect waves-dark btn right modal-action grey white-text upgrade">
-				<i class="material-icons hide-on-med-and-up">open_in_browser</i>
-				<span class="hide-on-small-only">Upgrade</span>
-			</button>
-			<button type="logout" class="waves-effect waves-dark btn right modal-action red white-text logout">
-				<i class="material-icons hide-on-med-and-up">power_settings_new</i>
-				<span class="hide-on-small-only">Logout</span>
-			</button>
-		</div>
-	</div>
-	<!-- MODALs END -->
 
+		<div id="newFileModal" class="modal bottomsheet">
+			<div class="modal-content">
+				<h5>Create New File</h5>
+				<form id="new_file">
+					<div class="input-field">
+						<i class="material-icons prefix">note_add</i>
+						<input class="filename" type="text" placeholder="Enter File Name" />
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="submit" class="waves-effect waves-light btn right modal-action" form="new_file">Create</button>
+				<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
+			</div>
+		</div>
+
+		<div id="renameModal" class="modal bottomsheet">
+			<div class="modal-content">
+				<h5>Rename</h5>
+				<form id="rename_it">
+					<div class="input-field">
+						<i class="material-icons prefix">text_format</i>
+						<input type="hidden" class="path" />
+						<input type="text" class="newname" placeholder="Enter New Name" />
+					</div>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="submit" class="waves-effect waves-light btn right modal-action" form="rename_it">Rename</button>
+				<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
+			</div>
+		</div>
+
+		<div id="editModal" class="modal bottom-sheet full">
+			<div class="modal-content">
+				<h6>File Name</h6>
+				<form id="save_it">
+					<input type="hidden" class="path" />
+					<textarea class="form-control file_content" rows="30"></textarea>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="submit" class="waves-effect waves-light btn right modal-action" form="save_it">Save</button>
+				<button type="reset" class="waves-effect waves-light btn-flat right modal-action modal-close">Close</button>
+			</div>
+		</div>
+
+		<div id="configModal" class="modal modal-footer">
+			<div class="modal-content">
+				<h4 class="left">Settings</h4>
+				<a class="right waves-effect waves-light btn-flat modal-action modal-close hoverable"><i class="material-icons">close</i></a>
+				<div class="clearfix"></div>
+				<form class="row no-vmargin" id="config_it">
+					<input type="hidden" name="do" value="config">
+					<input type="hidden" name="xsrf" value="<?= $_COOKIE['__xsrf']; ?>">
+					<div class="input-field">
+						<h6 class="left">View</h6>
+						<div class="switch right">
+							<label class="valign-wrapper">
+								<span class="valign-wrapper"><i class="material-icons">view_module</i> Grid</span>
+								<input type="checkbox" name="list_view" class="list_view" value="<?= !empty($config->list_view) ? '1' : '0'; ?>" <?= !empty($config->list_view) ? 'checked' : ''; ?>><span class="lever"></span>
+								<span class="valign-wrapper"><i class="material-icons">view_list</i> List</span>
+							</label>
+						</div>
+					</div>
+					<div class="collapse_body" style="display: none;">
+						<div class="input-field">
+							<h6>Password</h6>
+							<i class="material-icons prefix">lock</i>
+							<input type="password" name="pass" class="pwd" placeholder="Enter Password" value="<?= $_SESSION['ok_pass']; ?>"/>
+							<a class="waves-effect waves-dark btn-flat pwdeye" title="Show"><i class="material-icons">visibility</i></a>
+						</div>
+						<div class="input-field">
+							<h6>ASSETS DIR</h6>
+							<i class="material-icons prefix">link</i>
+							<input type="text" name="assets" value="<?= $config->assets; ?>">
+						</div>
+					</div>
+					<a class="collapse_btn blue-text text-darken-2">Show Advanced Settings</a>
+				</form>
+			</div>
+			<div class="modal-footer">
+				<button type="submit" class="waves-effect waves-light btn right modal-action" form="config_it">
+					<i class="material-icons hide-on-med-and-up">save</i>
+					<span class="hide-on-small-only">Save</span>
+				</button>
+				<button type="logout" class="waves-effect waves-dark btn right modal-action red logout">
+					<i class="material-icons hide-on-med-and-up">power_settings_new</i>
+					<span class="hide-on-small-only">Logout</span>
+				</button>
+			</div>
+		</div>
+		<!-- MODALs END -->
+	<!-- 
+		https://twemoji.maxcdn.com/svg/1f4c2.svg
+		 DARK - #059 / #035 / #245
+		COLOR - #269
+		Light - #5AE
+	-->
 	<script src="<?php echo $config->assets; ?>/jquery.min.js"></script>
 	<script src="<?php echo $config->assets; ?>/materialize.min.js"></script>
 	<script>
@@ -743,60 +760,43 @@ Light - #5AE
 		ga('send', 'pageview');
 	</script>
 	<script>
-		function octal(e) {
-			var charCode = (e.which) ? e.which : e.keyCode;
-			if (charCode != 46 && charCode > 31 && (charCode < 48 || charCode > 55)){
-				console.log(charCode);
-				return false;
-			}
-			return true;
-		}
 		(function($){
-			// $.fn.tablesorter = function() {
-			// 	var $table = this;
-			// 	this.find('th').click(function() {
-			// 		var idx = $(this).index();
-			// 		var direction = $(this).hasClass('sort_asc');
-			// 		$table.tablesortby(idx,direction);
-			// 	});
-			// 	return this;
-			// };
-			// $.fn.retablesort = function() {
-			// 	var $e = this.find('thead th.sort_asc, thead th.sort_desc');
-			// 	if($e.length)
-			// 		this.tablesortby($e.index(), $e.hasClass('sort_desc') );
-			// 	return this;
-			// }
-			// $.fn.tablesortby = function(idx,direction) {
-			// 	var $rows = this.find('tbody tr');
-			// 	function elementToVal(a) {
-			// 		var $a_elem = $(a).find('td:nth-child('+(idx+1)+')');
-			// 		var a_val = $a_elem.attr('data-sort') || $a_elem.text();
-			// 		return (a_val == parseInt(a_val) ? parseInt(a_val) : a_val);
-			// 	}
-			// 	$rows.sort(function(a, b){
-			// 		var a_val = elementToVal(a), b_val = elementToVal(b);
-			// 		return (a_val < b_val ? 1 : (a_val == b_val ? 0 : -1)) * (direction ? 1 : -1);
-			// 	})
-			// 	this.find('th').removeClass('sort_asc sort_desc');
-			// 	$(this).find('thead th:nth-child('+(idx+1)+')').addClass(direction ? 'sort_desc' : 'sort_asc');
-			// 	for(var i =0;i<$rows.length;i++)
-			// 		this.append($rows[i]);
-			// 	this.settablesortmarkers();
-			// 	return this;
-			// }
-			// $.fn.settablesortmarkers = function() {
-			// 	this.find('thead th i.glyphicon').remove();
-			// 	this.find('thead th.sort_asc').append('<i class="glyphicon glyphicon-chevron-up"></i>');
-			// 	this.find('thead th.sort_desc').append('<i class="glyphicon glyphicon-chevron-down"></i>');
-			// 	return this;
-			// }
+			$.fn.clickSort = function() {
+				var $table = this;
+				this.find('.tH').click(function() {
+					$table.sortBy( $(this).index(), $(this).hasClass('sort_asc') );
+				});
+				return this;
+			};
+			$.fn.autoSort = function() {
+				var $e = this.find('.tHead .tH.sort_asc, .tHead .tH.sort_desc');
+				if($e.length)
+					this.sortBy( $e.index(), $e.hasClass('sort_desc') );
+				return this;
+			}
+			$.fn.sortBy = function(idx, direction) {
+				var $rows = this.find('.tBody');
+				function data_sort(a) {
+					var a_val = $(a).find('.tD:nth-child('+(idx+1)+')').attr('data-sort');
+					return (a_val == parseInt(a_val) ? parseInt(a_val) : a_val);
+				}
+				$rows.sort(function(a, b){
+					var a_val = data_sort(a), b_val = data_sort(b);
+					return (a_val < b_val ? 1 : (a_val == b_val ? 0 : -1)) * (direction ? 1 : -1);
+				})
+				this.find('.tH').removeClass('sort_asc sort_desc');
+				$(this).find('.tHead .tH:nth-child('+(idx+1)+')').addClass(direction ? 'sort_desc' : 'sort_asc');
+				for(var i = 0; i<$rows.length; i++)
+					this.append($rows[i]);
+				return this;
+			}
 		})(jQuery);
+
 		$(function(){
 			var XSRF = (document.cookie.match('(^|; )__xsrf=([^;]*)')||0)[2];
 			var VERSION = '<?php echo VERSION; ?>';
 			var MAX_UPLOAD_SIZE = <?php echo $MAX_UPLOAD_SIZE; ?>;
-			var $tbody = $('#list');
+			var $list = $('#list');
 
 			$(document).on('contextmenu', function(e) {
 				e.preventDefault();
@@ -806,7 +806,7 @@ Light - #5AE
 			$('.modal').modal({
 				dismissible: false,
 				ready: function(modal, trigger) {
-					modal.find('input').first().focus();
+					modal.find('input[type="text"]').first().focus();
 					$('body').addClass('no_scroll');
 				},
 				complete: function() {
@@ -814,19 +814,18 @@ Light - #5AE
 				}
 			});
 
+			$('.collapse_btn').click(function(){
+				$(this).toggleClass('active');
+				if( $(this).hasClass('active') )
+					$(this).text('Hide Advanced Settings');
+				else
+					$(this).text('Show Advanced Settings');
+
+				$('.collapse_body').slideToggle();
+			});
 
 			$('input').attr('autocomplete', 'off').attr('spellcheck', false);
 			$(window).on('hashchange', list).trigger('hashchange');
-
-			// setInterval(function(){
-			// 	$.get('', {do: 'ping', xsrf: XSRF}, function(data){
-			// 		toastDestroy();
-			// 		if ( data.flag == false ) {
-			// 			Materialize.toast(data.response, 'stay');
-			// 		}
-			// 	}, 'json');
-			// }, 5000);
-
 
 			
 			/* DRAG DROP and CHOOSE FILES
@@ -905,7 +904,6 @@ Light - #5AE
 				XHR.open('POST', '');
 
 				XHR.upload.onprogress = function(e){
-					console.log(e);
 					if(e.lengthComputable) {
 						var progress = e.loaded / e.total * 100 | 0;
 						$modal.find('div.upload_'+index).find('.pcent').text( progress + '%');
@@ -1143,7 +1141,7 @@ Light - #5AE
 				$modal = $('#detailModal');
 				$modal.modal('open');
 				$modal.find('.name').text( $elem.attr('data-name') );
-				$modal.find('.path').text( $elem.attr('data-path') );
+				$modal.find('.path').text( $elem.closest('.card').find('a').prop('href') );
 				$modal.find('.type').text( $elem.attr('data-type') );
 				$modal.find('.size').text( $elem.attr('data-size') );
 				$modal.find('.perm').html( $elem.attr('data-perms') );
@@ -1185,7 +1183,7 @@ Light - #5AE
 			});
 
 			$('.list_view').on('change', function(){
-				$tbody.addClass('loading');
+				$list.addClass('loading');
 
 				if( $(this).is(':checked') ){
 					$(this).val(1);
@@ -1208,12 +1206,8 @@ Light - #5AE
 				e.preventDefault();
 				Materialize.toast('Updating Settings...', 'stay', 'wait');
 
-				console.log($form.serialize());
-
 				$.post('', $form.serialize(), function(data){
-					console.log(data);
 					$form.closest('.modal').modal('close');
-					document.cookie = 'PHPSESSID=; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
 					toastDestroy();
 					Materialize.toast(data.response, 'stay', data.flag == true ? 'green darken-3' : 'red darken-2');
 
@@ -1234,7 +1228,6 @@ Light - #5AE
 				$.post('', {do: 'upgrade', xsrf: XSRF}, function(data){
 					toastDestroy();
 					if (data.flag == true) {
-						document.cookie = 'PHPSESSID=; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
 						Materialize.toast(data.response, 'stay', 'green darken-3');
 
 						window.setTimeout(function(){
@@ -1251,15 +1244,19 @@ Light - #5AE
 			/* LOGOUT SESSION AND COOKIE
 			*******************************************/
 			$(document).on('click', '.logout', function() {
-				$('#configModal').modal('close');
-				document.cookie = 'PHPSESSID=; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-				toastDestroy();
-				Materialize.toast('Logged Out Successfully', 'stay', 'green darken-3');
+				Materialize.toast('Please Wait...', 'stay', 'wait');
 
-				window.setTimeout(function(){
-					window.location.reload();
-				}, 1000);
+				$.post('', {do: 'logout', xsrf: XSRF}, function(data){
+					$('#configModal').modal('close');
+					toastDestroy();
+					Materialize.toast(data.response, 'stay', data.flag == true ? 'green darken-3' : 'red darken-2');
+
+					window.setTimeout(function(){
+						window.location.reload();
+					}, 1000);
+				}, 'json');
 			});
+
 
 
 			/* LISTING and MENUS
@@ -1288,28 +1285,29 @@ Light - #5AE
 
 			function list() {
 				var hashval = window.location.hash.substr(1);
-				$tbody.addClass('loading');
+				$list.addClass('loading');
 				$.get('', {do: 'list', path: hashval}, function(data) {
-					$tbody.empty();
+					$list.empty();
 					$('#breadcrumb').empty().html( renderBreadcrumbs(hashval) );
 					if(data.flag == true) {
 						if( Array.isArray(data.response) ) {
 							if( $('main').hasClass('list') ){
-								$tbody.html('<div class="col s12 no-select heading"><div class="txtLite col l6 m5 s8"> &nbsp; &nbsp; <b>Name</b></div><div class="txtLite col l1 m2 s4">Size</div><div class="txtLite col l2 m2 hide-on-small-only truncate">Modified</div><div class="txtLite col l3 m3 hide-on-small-only">Permission</div></div>');
+								$list.html('<div class="col s12 no-select tHead"><div class="tH col l6 m5 s8 sort_asc"> &nbsp; &nbsp; <b>Name</b></div><div class="tH col l1 m2 s4">Size</div><div class="tH col l2 m2 hide-on-small-only truncate">Modified</div><div class="tH col l3 m3 hide-on-small-only">Permission</div></div>');
 							}
 							$.each(data.response, function(index, value){
-								$tbody.append(renderList(value));
+								$list.append(renderList(value));
 							});
 						}
 						else {
-							$tbody.html('<h4 class="center grey-text vmargin-3">No Files</h5>');
+							$list.html('<h4 class="center grey-text vmargin-3">No Files</h5>');
 						}
 					}
 					else {
 						Materialize.toast(data.response, 'stay', 'red darken');
 						console.warn(data.response);
 					}
-					$tbody.removeClass('loading');
+
+					$list.clickSort().autoSort().removeClass('loading');
 				}, 'json');
 			}
 
@@ -1372,13 +1370,13 @@ Light - #5AE
 					.attr('href', data.is_dir ? '#' + data.path : data.path)
 					.attr('target', data.is_dir ? '_self' : '_blank' )
 					.attr('title', data.name)
-					.append('<div class="col l6 m5 s8 truncate">' + icon + data.name + '</div>')
-					.append('<div class="txtLite col l1 m2 s4">' + data.size_ok + '</div>')
-					.append('<div class="txtLite col l2 m2 hide-on-small-only truncate" title="'+ data.mtime_ok +'">' + data.mtime_easy + '</div>')
-					.append('<div class="txtLite col l3 m3 hide-on-small-only truncate" title="'+ data.perms +'">' + data.perms_ok + '</div>')
+					.append('<div class="tD col l6 m5 s8 truncate" data-sort="' + data.sort + '">' + icon + data.name + '</div>')
+					.append('<div class="tD col l1 m2 s4" data-sort="' + data.size + '">' + data.size_ok + '</div>')
+					.append('<div class="tD col l2 m2 hide-on-small-only truncate" title="'+ data.mtime_ok +'" data-sort="' + data.mtime + '">' + data.mtime_easy + '</div>')
+					.append('<div class="tD col l3 m3 hide-on-small-only truncate" title="'+ data.perms +'" data-sort="' + data.perms + '">' + data.perms_ok + '</div>')
 
 					var item = $('<div />').addClass('card').addClass(data.is_dir ? 'is_dir' : 'is_file').append($link).append('<a class="waves-effect waves-dark more"><i class="material-icons grey-text text-darken-2">more_vert</i></a>').append($menu);
-					return $('<div class="col s12" />').html( item );
+					return $('<div class="col s12 tBody" />').html( item );
 				}
 			}
 
