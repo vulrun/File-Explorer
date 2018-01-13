@@ -69,9 +69,9 @@ File Explorer is developed by [webcdn](https://github.com/webcdn) with help from
 
 If this projects helps you, You can give us a cup of coffee :coffee:
 
-[![Donate | Paypal](https://camo.githubusercontent.com/d5d24e33e2f4b6fe53987419a21b203c03789a8f/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f6e6174652d50617950616c2d677265656e2e737667)](https://www.paypal.me/moohit23)
+[![Donate | Paypal](https://camo.githubusercontent.com/d5d24e33e2f4b6fe53987419a21b203c03789a8f/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f6e6174652d50617950616c2d677265656e2e737667)](https://gg.gg/contribute)
 
-:credit_card: [Donate Me to support](https://www.paypal.me/moohit23)
+:credit_card: [Donate Me to support](https://gg.gg/contribute)
 
 
 ## License
