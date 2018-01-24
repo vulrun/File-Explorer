@@ -16,7 +16,7 @@ date_default_timezone_set('Asia/Kolkata');
 ini_set('display_errors', true);
 error_reporting(0);
 
-define('VERSION', '1.2');
+define('VERSION', '1.3');
 define('_CONFIG', __DIR__.'/.config');
 define('_URL', $_SERVER['REQUEST_SCHEME'].'://'.$_SERVER['HTTP_HOST']);
 $errors = error_get_last();
@@ -753,7 +753,7 @@ if( is_array($errors) ){
 			(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
 			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
 		})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
-		ga('create', 'UA-58646619-1', 'auto');
+		ga('create', 'UA-113019966-1', 'auto');
 		ga('send', 'pageview');
 	</script>
 	<script>
