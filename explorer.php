@@ -16,7 +16,7 @@ date_default_timezone_set('Asia/Kolkata');
 ini_set('display_errors', true);
 error_reporting(0);
 
-define('VERSION', '1.3');
+define('VERSION', '1.4');
 define('_CONFIG', __DIR__.'/.config');
 define('_URL', $_SERVER['REQUEST_SCHEME'].'://'.$_SERVER['HTTP_HOST']);
 $errors = error_get_last();
@@ -709,7 +709,6 @@ if( is_array($errors) ){
 				<div class="clearfix"></div>
 				<form class="row no-vmargin" id="config_it">
 					<input type="hidden" name="do" value="config">
-					<input type="hidden" name="xsrf" value="<?= $_COOKIE['__xsrf']; ?>">
 					<div class="input-field">
 						<h6 class="left">View</h6>
 						<div class="switch right">
@@ -1200,6 +1199,7 @@ if( is_array($errors) ){
 
 			$('#config_it').submit(function(e) {
 				$form = $(this);
+				$form.prepend('<input type="hidden" name="xsrf" value="'+XSRF+'">');
 				e.preventDefault();
 				Materialize.toast('Updating Settings...', 'stay', 'wait');
 
