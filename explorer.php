@@ -16,7 +16,7 @@ date_default_timezone_set('Asia/Kolkata');
 ini_set('display_errors', true);
 error_reporting(0);
 
-define('VERSION', '1.4');
+define('VERSION', '1.5');
 define('_CONFIG', __DIR__.'/.config');
 define('_URL', $_SERVER['REQUEST_SCHEME'].'://'.$_SERVER['HTTP_HOST']);
 $errors = error_get_last();
@@ -489,7 +489,7 @@ if( is_array($errors) ){
 		.modal.bottom-sheet.full {max-height: 100%;}
 		.modal.bottom-sheet .modal-content {padding: 1rem !important;}
 		.modal.bottom-sheet .modal-footer {padding: 1rem !important; height: 68px;}
-		.modal textarea {height: 78vh !important; resize: none; padding: 0.5rem;}
+		.modal textarea {height: 78vh !important; resize: none; padding: 0.5rem; font-family: monospace; font-size: 0.9rem;}
 
 		#uploadModal {box-shadow: inset 0 0 5rem rgba(0, 0, 0, 0.2);}
 		#uploadModal .modal-content {color: #333; -webkit-transition: background 0.2s; transition: background 0.2s;}
