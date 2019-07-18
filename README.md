@@ -2,7 +2,7 @@
 
 A File Manager with stunning design & astonishing develops, beautifully written in PHP, everything fused in a single file.
 
-:link: Live Demo
+:link: [Live Demo](https://web-file-explorer.herokuapp.com/)
 
 
 

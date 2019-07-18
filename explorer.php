@@ -10,10 +10,10 @@
 **/
 session_start();
 setlocale(LC_ALL, 'en_US.UTF-8');
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+error_reporting(-1);
+ini_set('display_errors', 0);
 ini_set('max_execution_time', 0);
-define('VERSION', '2.0.3-beta');
+define('VERSION', '2.0.4-beta');
 define('_CONFIG', __DIR__.'/.htconfig');
 $phpVer = phpversion();
 
@@ -121,7 +121,7 @@ if( !empty($_REQUEST['do']) ){
 					'name' => basename($fp),
 					'path' => preg_replace('@^\./@', '', $fp),
 					'real_path' => realpath($fp),
-					'type' => function_exists('mime_content_type') ? mime_content_type($fp) : $ext,
+					'type' => function_exists('mime_content_type') ? @mime_content_type($fp) : $ext,
 					'ext' => is_dir($fp) ? '---' : $ext,
 					'size' => is_dir($fp) ? 0 : $stat['size'],
 					'perm' => '0' . decoct( @fileperms($fp) & 0777 ),
@@ -578,10 +578,7 @@ function inBytes($ini_v) {
 	input[type=text],
 	input[type=email],
 	input[type=password] {
-		-webkit-box-flex: 1;
-		    -ms-flex: 1;
-		        flex: 1;
-		display: inline-block;
+		display: block;
 		height: 2.5rem;
 		line-height: 2.5rem;
 		padding: 0 1rem;
@@ -672,9 +669,7 @@ function inBytes($ini_v) {
 	}
 	.btn {
 		display: inline-block;
-		height: 2.25rem;
-		line-height: 2.25rem;
-		padding: 0 1rem;
+		padding: 0.4rem 1rem;
 		margin: 0.25rem;
 		border-radius: 2px;
 		border: 1px solid transparent;
@@ -939,6 +934,7 @@ function inBytes($ini_v) {
 	header nav a {
 		padding: 0.5rem 0.75rem;
 		font-size: 0.8rem;
+		white-space: nowrap;
 		-webkit-box-orient: vertical;
 		-webkit-box-direction: normal;
 		    -ms-flex-direction: column;
@@ -951,7 +947,8 @@ function inBytes($ini_v) {
 		content: attr(title);
 	}
 	header nav a.toggle_view {
-		width: 80px;
+		width: 5rem;
+		min-width: 5rem;
 	}
 	header nav a.toggle_view[title*=Grid] svg path {
 		d: path("M3,3v8h8V3H3z M9,9H5V5h4V9z M3,13v8h8v-8H3z M9,19H5v-4h4V19z M13,3v8h8V3H13z M19,9h-4V5h4V9z M13,13v8h8v-8H13z M19,19h-4v-4h4V19z");
@@ -978,6 +975,8 @@ function inBytes($ini_v) {
 		}
 		header nav {
 			width: 100%;
+    		overflow-x: auto;
+			overflow-y: hidden;
 		}
 	}
 
@@ -1376,6 +1375,9 @@ function inBytes($ini_v) {
 		background-color: red;
 	}
 
+	#configModal #pass {
+		padding-right: 3.5rem;
+	}
 	#configModal .pwdeye {
 		position: absolute;
 		bottom: 0.5rem;
@@ -2828,6 +2830,7 @@ function html_setup($phpInfo){?>
 			font-weight: bold;
 		}
 		input {
+			display: block;
 			width: 100%;
 			height: 2.5rem;
 			margin: 0.25rem auto;
@@ -2836,10 +2839,8 @@ function html_setup($phpInfo){?>
 			font-weight: initial;
 		}
 		button {
-			-webkit-box-flex: 1;
-			    -ms-flex: 1;
-			        flex: 1;
-			height: 2.5rem;
+			display: inline-block;
+			padding: 0.5rem 1rem;
 			color: #FFF;
 			background-color: #035;
 			text-align: center;
@@ -2994,11 +2995,17 @@ function html_login($label){?>
 			font-size: 0.8rem;
 		}
 		form input {
+			display: block;
 			width: 100%;
 			height: 3rem;
 			font-size: 1.5rem;
 		}
+		form input#auth {
+			padding-right: 1rem;
+		}
 		form button {
+			display: inline-block;
+			width: 3rem;
 			max-width: 3rem;
 			height: 3rem;
 			cursor: pointer;
@@ -3200,9 +3207,7 @@ function html_editor($file){?>
 		}
 		.btn {
 			display: inline-block;
-			height: 2.25rem;
-			line-height: 2.25rem;
-			padding: 0 1rem;
+			padding: 0.4rem 1rem;
 			margin: 0.25rem;
 			border-radius: 2px;
 			border: 1px solid transparent;
@@ -3252,10 +3257,9 @@ function html_editor($file){?>
 			margin: 1rem auto;
 		}
 		textarea {
-			-webkit-box-flex: 1;
-			    -ms-flex: 1;
-			        flex: 1;
-			display: inline-block;
+			display: block;
+			width: 100%;
+			height: auto;
 			padding: 0.5rem;
 			color: #222;
 			background-color: white;
