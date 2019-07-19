@@ -29,8 +29,6 @@ A File Manager with stunning design & astonishing develops, beautifully written 
 * XSRF Protection
 
 
-
-
 ## Browse Support
 
 | Browser       | Support                  |
@@ -44,7 +42,6 @@ A File Manager with stunning design & astonishing develops, beautifully written 
 
 
 ## Suggestions
-
 
 If you are thinking some good stuff/functionality that can be baked in the [File Explorer](https://github.com/webcdn/File-Explorer). Drop your the great ideas [here](https://github.com/webcdn/File-Explorer/issues/1).
 
