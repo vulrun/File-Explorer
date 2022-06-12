@@ -1,2 +1,6 @@
-/tests/
+tests/
 .htconfig
+
+# misc
+.trash/
+.trash*
